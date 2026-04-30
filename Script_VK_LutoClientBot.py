@@ -53,6 +53,14 @@ MODULE_LETTER_TO_PREFIX = {v: k for k, v in PREFIX_TO_MODULE_LETTER.items()}
 # Доступные типы материалов (колонки в Moduls_log)
 MATERIAL_COLUMNS = ['Велюр', 'Рогожка', 'Букле', 'Эко-кожа']
 
+# Сопоставление названия типа материала с префиксом кодов материалов
+MATERIAL_TYPE_PREFIX_MAP = {
+    'Букле': 'MB',
+    'Эко-кожа': 'MS',
+    'Велюр': 'MV',
+    'Рогожка': 'MR'
+}
+
 
 # ================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==================
 def ensure_dirs():
@@ -110,6 +118,11 @@ def generate_unique_order_code() -> str:
         code = generate_order_code()
         if is_order_code_unique(code):
             return code
+
+
+def get_material_type_prefix(type_name: str) -> Optional[str]:
+    """Возвращает буквенный префикс для папки с фотографиями типа материала."""
+    return MATERIAL_TYPE_PREFIX_MAP.get(type_name)
 
 
 # ================== РАБОТА С EXCEL (КОРЗИНА) ==================
@@ -1115,14 +1128,6 @@ def send_media_group(vk, user_id, photos):
         )
 
 
-def send_sofa_schema(vk, user_id, sofa_code):
-    schema_path = get_sofa_schema(sofa_code)
-    if schema_path:
-        send_media_group(vk, user_id, [schema_path])
-    else:
-        send_message(vk, user_id, "Схема для этого дивана не найдена.")
-
-
 def send_material_photos(vk, user_id, material_code):
     photos = get_material_photos(material_code)
     if photos:
@@ -2103,6 +2108,26 @@ def handle_selecting_material_type(vk, user_id, text, data):
             keyboard = create_material_type_keyboard(available_types)
             send_message(vk, user_id, "Выберите тип материала:", keyboard)
             return
+
+        # --- НОВОЕ: сообщение и фотоколлаж типа материала ---
+        send_message(vk, user_id, "Ищем подходящие материалы, подождите")
+        # Определяем префикс типа для папки с фотографиями
+        prefix = get_material_type_prefix(text)
+        if prefix:
+            collage_dir = os.path.join(MATERIALS_PHOTO_DIR, 'SPLIT', prefix)
+            photo_files = []
+            if os.path.exists(collage_dir):
+                for f in os.listdir(collage_dir):
+                    if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                        photo_files.append(os.path.join(collage_dir, f))
+                        if len(photo_files) >= 10:
+                            break
+            if photo_files:
+                send_media_group(vk, user_id, photo_files)
+            else:
+                send_message(vk, user_id, "Фотографии для этого типа материала не найдены.")
+
+        # Продолжаем как обычно: переход к просмотру карточек материалов
         user_states[user_id] = {
             'state': 'browsing_materials',
             'data': {
@@ -2114,6 +2139,7 @@ def handle_selecting_material_type(vk, user_id, text, data):
         }
         send_message(vk, user_id, "Загрузка карточки материала. Подождите...")
         display_material_card(vk, user_id, materials[0], create_material_card_keyboard())
+
     elif text == "Назад":
         user_states[user_id] = {
             'state': 'choosing_material_method',
